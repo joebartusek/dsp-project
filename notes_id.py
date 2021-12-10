@@ -11,7 +11,9 @@ def compute_stft(audio): # Length of segments as input ?
     """
     return ssp.stft(
         audio.signal,
-        audio.sampling_freq,
+        audio.sampling_freq #,
         # WINDOW ?,
         # LENGTH OF SEGMENTS
     )
+
+
