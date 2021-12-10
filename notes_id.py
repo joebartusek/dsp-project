@@ -15,5 +15,3 @@ def compute_stft(audio): # Length of segments as input ?
         # WINDOW ?,
         # LENGTH OF SEGMENTS
     )
-
-
