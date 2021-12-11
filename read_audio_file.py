@@ -12,5 +12,4 @@ class AudioSignal:
         self.rate, self.signal = wav.read(filepath)
         self.normalized_signal = self.signal / max(self.signal)
         self.length = len(self.signal)
-        self.sampling_freq = 1/self.rate
         self.total_time_duration = self.length/self.rate
