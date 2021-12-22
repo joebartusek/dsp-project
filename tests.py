@@ -8,16 +8,13 @@ mpl.rcParams['animation.ffmpeg_path'] = r"/usr/local/bin/ffmpeg"
 
 
 #fpath = input('\nPlease enter path of file to process: ')
-fpath = "piano-c4.wav"
+fpath = "piano-c4-e4.wav"
 audio = RAF.AudioSignal(filepath = fpath)
 
 
 frequencies, times, signal_stft = NID.compute_stft(audio.signal, audio.rate)
 
-NID.get_notes(signal_stft, frequencies, 'piano')
-
-
-
+lst = NID.get_note_frequencies(signal_stft, frequencies, 'piano')
 
 
 

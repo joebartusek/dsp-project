@@ -1,15 +1,17 @@
 import numpy as np
 from scipy import signal as ssp
 import matplotlib.pyplot as plt
+from math import sqrt
 #%%
 from matplotlib.animation import FuncAnimation
 from matplotlib.animation import FFMpegWriter
 import matplotlib as mpl
 mpl.rcParams['animation.ffmpeg_path'] = r"/usr/local/bin/ffmpeg"
+from time import sleep
 #%%
 
 timbre = {
-        'piano':    [1.00, 0.88, 0.21, 0.16, 0.09, 0.07, 0.04, 0.05, 0.04, 0.04, 0.04, 1e5],
+        'piano':    [1.00, 5.00, 1.00, 1.00, 1.00, 0.50, 0.33, 0.10, 0.10, 0.10, 0.10, 1e5],
         'trumpet':  [1.00, 0.88, 2.31, 3.43, 1.99, 1.55, 1.40, 1.05, 0.80, 0.43, 0.25, 1e5]
         }
 
@@ -29,13 +31,55 @@ def compute_stft(signal, rate):
         signal,
         rate,
         window = 'nuttall',
-        nperseg = rate * 60*0.125/72
+        nperseg = rate * 60*0.25/72
     )
 
-#the value of nperseg is currently tailored for bohemian-atrocity, 72 should be the BPM and 15 should be 60 times the desired precision (i.e. 0.25 for quarter notes, 0.125 for eighth notes, etc.)
+#the value of nperseg is currently tailored for bohemian-atrocity, "72" should be the BPM and "60*..." should be 60 times the desired precision (i.e. 0.25 for quarter notes, 0.125 for eighth notes, etc.)
 
 
-def get_notes(stft, frequencies, instrument):
+
+
+def find_nearest(value, arr):
+    """
+    Inputs:
+        * Value (float or int) to look for
+        * Sorted (!) array
+    Outputs:
+        * Index of first element in array nearest to value
+    """
+    
+    index = 0
+    while index < len(arr)-1 and arr[index] < value:
+        index +=1
+    if value-arr[index-1] < abs(arr[index]-value):
+        return index-1
+    else:
+        return index
+
+
+
+
+def below_threshold(arr, threshold):
+    """
+    Inputs:
+        * Numpy array
+        * Threshold numpy array (must be the same length as arr)
+    Output:
+        * Boolean of whether all elements of arr are lower than all corresponding elements of threshold
+    """
+    
+    if len(arr) == 1:
+        return (arr[0] < threshold[0])
+    elif arr.max() >= threshold[arr.argmax()]:
+        return False
+    else:
+        return below_threshold(np.concatenate((arr[:arr.argmax()],arr[arr.argmax()+1:])), np.concatenate((threshold[:arr.argmax()],threshold[arr.argmax()+1:])))
+    
+
+
+
+
+def get_note_frequencies(stft, frequencies, instrument):
     """
     Inputs:
         * STFT of a signal (shape: (# of frequencies, # of time samples))
@@ -43,76 +87,90 @@ def get_notes(stft, frequencies, instrument):
     Outputs:
         * ???? TBD
     """
-
-    #     notes = np.zeros((12, stft.shape[1]))
     
     lowest_tone = 440 / 2**4 / 2**(1/24)  # Frequency of a quarter tone below an A0
-    # all_local_means = list()
     note_frequencies = list()
+    length = find_nearest(4200, frequencies)
     
-    for t in range(30, stft.shape[1]):
-        fourrier_t = abs(stft[:,t])
-        note_ranges = [0]        
-        local_means = list()
-        f = lowest_tone
-        i, i_start = 0, 0
+    for t in range(stft.shape[1]):
+        fourier_t = abs(stft[:length,t])     
+        Y_MAX = fourier_t.max()
+        mean = float()
+        note_frequencies.append(list())
+        threshold = np.zeros(len(fourier_t))
         
-        while f < frequencies.max():
-            local_mean = 0
-            i_start = i
-            while frequencies[i] < f * (2**(1/12)) and i < len(fourrier_t):
-                local_mean += fourrier_t[i]
-                i += 1
-            if (i != i_start):
-                local_mean /= (i-i_start)
-                local_means += (i-i_start)*[local_mean]
-                note_ranges.append(min(note_ranges[-1] + i-i_start, len(fourrier_t)-1))
-            f *= (2**(1/2))
+        # Compute the overall mean
+        for i in fourier_t:
+            mean += i**2
+        mean /= len(fourier_t.nonzero()[0])
+        mean = sqrt(mean)
         
-        # all_local_means.append(local_means)
-        
-        
-        print("NEW_LOOP")
+        # Compute mean per four octaves range
+        omean = 0
+        f = lowest_tone * (2**4)
+        l = 0
+        l_prev = 0
+        while f < frequencies[length]:
+            l_prev = l
+            while frequencies[l] < f:
+                omean += fourier_t[l]**2
+                l += 1
+            omean /= (l-l_prev)
+            omean = sqrt(omean)
+            if omean > mean:
+                threshold[l_prev:l+1] = 1.5*omean
+            else:
+                threshold[l_prev:l+1] = 1.5*mean
+            f *= 2**4
+        threshold[l:] = 1.5*mean
+        threshold[:find_nearest(lowest_tone, frequencies)] = fourier_t.max()+1
+
         plt.figure()
-        plt.plot(frequencies[:500], fourrier_t[:500])
-        plt.plot(frequencies[:500], local_means[:500])
+        plt.plot(frequencies[:length], fourier_t,color='b')
+        plt.plot(frequencies[:length], threshold,color='m')
+        plt.ylim(0,Y_MAX)
         
-        
-        
-        while fourrier_t.max()>1.5*local_means[fourrier_t.argmax()]:
+        # Identify peaks at t
+        while not below_threshold(fourier_t, threshold):
             peak = 0
-            n = 0
             
-            while peak==0 and n<len(note_ranges)-1:
-                peak = fourrier_t[note_ranges[n]:note_ranges[n+1]].argmax()
-                if fourrier_t[peak]<1.5*local_means[note_ranges[n]]:
-                    peak = 0
-                n += 1
+            # Identify lowest-frequecy peak
+            while (fourier_t[peak] < threshold[peak] or fourier_t[peak+1] > fourier_t[peak]) and peak < len(fourier_t)-1:
+                peak += 1
             
-            note_frequencies.append(frequencies[peak])
-            print(note_frequencies)
+            # Add peak to list of frequencies at t
+            note_frequencies[t].append(frequencies[peak])
             
-            
+            # Remove peak and its harmonics from DFT
             i = peak
-            print(peak)
             j = 0
-            intensity = fourrier_t[peak]
-            
-            while i<len(fourrier_t)-2 and peak!=0:
-                for k in range(i-1,i+2):
-                    fourrier_t[k] = max(0, fourrier_t[k] - timbre[instrument][j]*intensity)
+            intensity = fourier_t[peak]
+            plt.plot(frequencies[peak],intensity,marker='o',color='g')
+            while i<len(fourier_t)-2:
+                for k in range(i-10,i+11):
+                    if k >= len(fourier_t):
+                        break
+                    fourier_t[k] = max(0, fourier_t[k] - timbre[instrument][j]*intensity)
                 if j<len(timbre[instrument])-1:
                     j += 1
-                i += peak
+                i = find_nearest(frequencies[i]+frequencies[peak], frequencies)
     
-            plt.figure()
-            plt.plot(frequencies[:500], fourrier_t[:500])
-            plt.plot(frequencies[:500], local_means[:500])
-    
+            plt.plot(frequencies[:length], fourier_t,color='r')
+            plt.ylim(0,Y_MAX)
+            
     return note_frequencies
         
-    
-    
+
+
+def freq_to_notes(note_frequencies):
+    """
+    TODO
+    """
+    pass 
+#    notes = np.zeros((12*9, len(note_frequencies)))
+#    
+#    for t in range(len(note_frequencies)):
+        
     
     
     
@@ -129,6 +187,3 @@ def get_notes(stft, frequencies, instrument):
 #    
 #    FuncAnimation(fig,next_frame,frames=range(stft.shape[1]), blit=True, repeat=False)
 #    plt.show()
-    
-        
-        
