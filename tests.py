@@ -1,10 +1,6 @@
 import notes_id as NID
 import read_audio_file as RAF
 from matplotlib import pyplot as plt
-from matplotlib.animation import FuncAnimation
-from matplotlib.animation import FFMpegWriter
-import matplotlib as mpl
-mpl.rcParams['animation.ffmpeg_path'] = r"/usr/local/bin/ffmpeg"
 
 
 #fpath = input('\nPlease enter path of file to process: ')
