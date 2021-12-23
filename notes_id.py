@@ -3,11 +3,13 @@ from scipy import signal as ssp
 import matplotlib.pyplot as plt
 from math import sqrt
 
+# TODO : remove this
+from time import sleep
 
 #%%
 
 timbre = {
-        'piano':    [1.00, 5.00, 1.00, 1.00, 1.00, 0.50, 0.33, 0.10, 0.10, 0.10, 0.10, 1e5],
+        'piano':    [1.00, 2.00, 1.00, 1.00, 1.00, 0.50, 0.33, 0.10, 0.10, 0.10, 0.10, 1e5],
         'trumpet':  [1.00, 0.88, 2.31, 3.43, 1.99, 1.55, 1.40, 1.05, 0.80, 0.43, 0.25, 1e5]
         }
 
@@ -27,7 +29,7 @@ def compute_stft(signal, rate):
         signal,
         rate,
         window = 'nuttall',
-        nperseg = rate * 60*0.25/72
+        nperseg = rate * 60*0.125/72
     )
 
 #the value of nperseg is currently tailored for bohemian-atrocity, "72" should be the BPM and "60*..." should be 60 times the desired precision (i.e. 0.25 for quarter notes, 0.125 for eighth notes, etc.)
@@ -55,123 +57,17 @@ def find_nearest(value, arr):
 
 
 
-def below_threshold(arr, threshold):
-    """
-    Inputs:
-        * Numpy array
-        * Threshold numpy array (must be the same length as arr)
-    Output:
-        * Boolean of whether all elements of arr are lower than all corresponding elements of threshold
-    """
-    
-    if len(arr) == 1:
-        return (arr[0] < threshold[0])
-    elif arr.max() >= threshold[arr.argmax()]:
-        return False
-    else:
-        return below_threshold(np.concatenate((arr[:arr.argmax()],arr[arr.argmax()+1:])), np.concatenate((threshold[:arr.argmax()],threshold[arr.argmax()+1:])))
-    
-
-
-
-
-def get_note_frequencies(stft, frequencies, instrument):
-    """
-    Inputs:
-        * STFT of a signal (shape: (# of frequencies, # of time samples))
-        * Array of frequencies of the STFT
-    Outputs:
-        * ???? TODO
-    """
-    
-    lowest_tone = 440 / 2**4 / 2**(1/24)  # Frequency of a quarter tone below an A0
-    note_frequencies = list()
-    length = find_nearest(4200, frequencies)
-    
-    for t in range(stft.shape[1]):
-        dft = abs(stft[:length,t])     
-        Y_MAX = dft.max()
-        mean = float()
-        note_frequencies.append(list())
-        threshold = np.zeros(len(dft))
-        
-        # Compute the overall mean
-        for i in dft:
-            mean += i**2
-        mean /= len(dft.nonzero()[0])
-        mean = sqrt(mean)
-        
-        # Compute mean per four octaves range
-        omean = 0
-        f = lowest_tone * (2**4)
-        l = 0
-        l_prev = 0
-        while f < frequencies[length]:
-            l_prev = l
-            while frequencies[l] < f:
-                omean += dft[l]**2
-                l += 1
-            omean /= (l-l_prev)
-            omean = sqrt(omean)
-            if omean > mean:
-                threshold[l_prev:l+1] = 1.5*omean
-            else:
-                threshold[l_prev:l+1] = 1.5*mean
-            f *= 2**4
-        threshold[l:] = 1.5*mean
-        threshold[:find_nearest(lowest_tone, frequencies)] = dft.max()+1
-
-#        plt.figure()
-#        plt.plot(frequencies[:length], dft,color='b')
-#        plt.plot(frequencies[:length], threshold,color='m')
-#        plt.ylim(0,Y_MAX)
-        
-        # Identify peaks at t
-        while not below_threshold(dft, threshold):
-            peak = 0
-            
-            # Identify lowest-frequecy peak
-            while (dft[peak] < threshold[peak] or dft[peak+1] > dft[peak]) and peak < len(dft)-1:
-                peak += 1
-            
-            # Add peak to list of frequencies at t
-            note_frequencies[t].append(frequencies[peak])
-            
-            # Remove peak and its harmonics from DFT
-            i = peak
-            j = 0
-            intensity = dft[peak]
-#            plt.plot(frequencies[peak],intensity,marker='o',color='g')
-            while i<len(dft)-2:
-                for k in range(i-10,i+11):
-                    if k >= len(dft):
-                        break
-                    dft[k] = max(0, dft[k] - timbre[instrument][j]*intensity)
-                if j<len(timbre[instrument])-1:
-                    j += 1
-                i = find_nearest(frequencies[i]+frequencies[peak], frequencies)
-    
-#            plt.plot(frequencies[:length], dft,color='r')
-#            plt.ylim(0,Y_MAX)
-            
-    return note_frequencies
-
-
-
-
-
-
-
-
-def get_peaks(stft, frequencies):
+def get_peaks(stft, frequencies, instrument):
     lowest_tone = 440 / 2**4  # Frequency of an A0
     peaks = list()
     length = find_nearest(4200, frequencies)
+    tbr = timbre[instrument]
+    
+    Y_MAX = abs(stft).max()
     
     for t in range(stft.shape[1]):
         
-        dft = abs(stft[:length,t])     
-        Y_MAX = dft.max()
+        dft = abs(stft[:length,t])
         mean = float()
         threshold = np.zeros(len(dft))
         peaks.append(dict())
@@ -181,8 +77,16 @@ def get_peaks(stft, frequencies):
             mean += i**2
         mean /= len(dft.nonzero()[0])
         mean = sqrt(mean)
+        if mean < Y_MAX/100:
+            mean = Y_MAX
         
-        # Compute mean per four octaves range
+        
+        # ---- Skip if silence / not loud enough ----
+        if dft.max() < mean:
+            continue
+        
+        
+        # ---- Compute mean per four octaves range ----
         omean = 0
         f = lowest_tone * (2**4)
         l = 0
@@ -202,33 +106,60 @@ def get_peaks(stft, frequencies):
         threshold[l:] = 1.5*mean
         threshold[:find_nearest(lowest_tone, frequencies)] = dft.max()+1
         
-        # Clean signal below threshold
-        for i in range(length):
-            if dft[i] < threshold[i]:
-                dft[i] = 0
+        
+        # ---- Clean dft below threshold and isolate peaks ----
+        for pos in range(length):
+            if dft[pos] < threshold[pos]:
+                dft[pos] = 0
+            elif dft[pos-1] < dft[pos] and dft[pos] >= dft[pos+1]:
+                i = pos
+                while dft[i-1] < dft[i]:
+                    i -= 1
+                dft[i:pos] = 0
+                i = pos
+                while dft[i+1] < dft[i]:
+                    i += 1
+                dft[pos+1:i] = 0
                 
         plt.figure()
-        plt.plot(frequencies[:length], dft, color='r')
-        
-        # Register peaks
-        tone = lowest_tone
-        left, right = 0, 0
-        while left < length:
-            left = find_nearest(tone / 2**(1/24), frequencies)
-            right = find_nearest(tone * 2**(1/24), frequencies)
+        plt.plot(dft, color='r') #frequencies[:length],
+        plt.ylim(0, Y_MAX)
+#        sleep(1)
+           
             
-            if (dft[left:right] != 0).any():
-                peaks[t][left+dft[left:right].argmax()] = dft[left:right].max()
-                dft[left-1:right+1] = 0
+        # ---- Register fundamental peaks and remove harmonics ----
+        for pos in range(5,length-5):
+            if dft[pos]==0:
+                continue
+
+            else:
+                peaks[t][pos] = (frequencies[pos],dft[pos])
                 
-            tone *= 2**(1/12)
+                ref_freq,ref_intensity = frequencies[pos], dft[pos]
+                freq = ref_freq*2
+                i = find_nearest(freq, frequencies)
+                j = 0
+                
+                while i < length-5:
+                    for k in range(i-5,i+6):
+                        if dft[k] == 0:
+                            continue
+                        dft[k] = max(0.0, dft[k] - ref_intensity*tbr[j])
+                        if dft[k] < threshold[k]:
+                            dft[k] = 0
+
+                    freq += ref_freq
+                    i = find_nearest(freq, frequencies)
+                    if j < len(tbr)-1:
+                        j += 1
+        
+        plt.plot(dft,color='b') #frequencies[:length],
+        plt.ylim(0, Y_MAX)
         
     return peaks
 
-
-
-
-
+ 
+    
 
 
 
@@ -236,15 +167,26 @@ def freq_to_notes(peaks, frequencies):
     """
     TODO
     """
-    scale_0 = np.array([16.35, 17.32, 18.35, 19.45, 20.60, 21.83, 23.12, 24.50, 25.96, 27.50, 29.14, 30.87])
-    notes = np.zeros((12, len(peaks)), dtype=bool)
+    scale_0 = np.array([16.35, 17.32, 18.35, 19.45, 20.60, 21.83, 23.12, 24.50, 25.96, 27.50, 29.14, 30.87, 32.70])
+    notes = np.zeros((len(peaks), 12), dtype=bool)
     
     for t in range(len(peaks)):
-        for k,i in peaks[t].items():
+        for f,i in peaks[t].values():
             scale = scale_0.copy()
-            while scale[-1] < frequencies[k]:
+            while scale[-1] < f:
                 scale *= 2
-            n = find_nearest(frequencies[k], scale)
-            notes[n][t] = 1
+            n = find_nearest(f, scale)
+            notes[t][n%12] = 1
     
     return notes
+
+
+
+
+def notes_readable(notes):
+    names = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B']
+    for t in range(notes.shape[0]):
+        print("\n--------\nt =",t)
+        for n in range(12):
+            if notes[t][n]: print(names[n])
+    return
