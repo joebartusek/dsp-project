@@ -60,7 +60,7 @@ def find_nearest(value, arr):
 def get_peaks(stft, frequencies, instrument):
     lowest_tone = 440 / 2**4  # Frequency of an A0
     peaks = list()
-    length = find_nearest(4186, frequencies)
+    length = find_nearest(3520, frequencies)
     tbr = timbre[instrument]
     
     Y_MAX = abs(stft).max()
@@ -106,6 +106,8 @@ def get_peaks(stft, frequencies, instrument):
         threshold[l:] = 1.5*mean
         threshold[:find_nearest(lowest_tone, frequencies)] = dft.max()+1
         
+        # uncomment this if using CQT
+        #threshold = np.full(len(dft), mean)
         
         # ---- Clean dft below threshold and isolate peaks ----
         for pos in range(length):
@@ -184,9 +186,9 @@ def freq_to_notes(peaks, frequencies):
 
 
 def notes_readable(notes):
-    names = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B']
+    names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
     for t in range(notes.shape[0]):
-        notes_t = ''.join([names[n] for n in list(np.where(notes[t,]==1)[0])])
+        notes_t = ' '.join([names[n] for n in list(np.where(notes[t,]==1)[0])])
         if notes_t: print(notes_t)
     return
 

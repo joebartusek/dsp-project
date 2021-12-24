@@ -6,7 +6,7 @@ import librosa.display
 import numpy as np
 import math
 
-transform = 'STFT'
+transform = 'CQT'
 
 #fpath = input('\nPlease enter path of file to process: ')
 fpath = "test_audio/piano_Dm.wav"
@@ -16,10 +16,10 @@ if transform == 'STFT':
     frequencies, times, transform = NID.compute_stft(audio.signal, audio.rate)
 
 elif transform == 'CQT':
-    frequencies = np.logspace(math.log(27.5,10), math.log(4186,10), 87)
+    frequencies = [27.5*(2**(i/12)) for i in range(84)]
     samples, sample_rate = librosa.load(fpath)
     transform = np.abs(librosa.cqt(samples, sr=sample_rate, 
-                             fmin=librosa.note_to_hz('A0'), n_bins=87, bins_per_octave=12))
+                             fmin=librosa.note_to_hz('A0'), n_bins=84, bins_per_octave=12))
 
 
 peaks = NID.get_peaks(transform, frequencies, 'piano')
