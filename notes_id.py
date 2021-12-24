@@ -9,7 +9,7 @@ from time import sleep
 #%%
 
 timbre = {
-        'piano':    [1.00, 2.00, 1.00, 1.00, 1.00, 0.50, 0.33, 0.10, 0.10, 0.10, 0.10, 1e5],
+        'piano':    [1.00, 1.00, 0.75, 0.75, 0.50, 0.50, 0.33, 0.10, 0.10, 0.10, 0.10, 1e5],
         'trumpet':  [1.00, 0.88, 2.31, 3.43, 1.99, 1.55, 1.40, 1.05, 0.80, 0.43, 0.25, 1e5]
         }
 
@@ -29,10 +29,10 @@ def compute_stft(signal, rate):
         signal,
         rate,
         window = 'nuttall',
-        nperseg = rate * 60*0.125/72
+        nperseg = rate * 60*0.25/72
     )
 
-#the value of nperseg is currently tailored for bohemian-atrocity, "72" should be the BPM and "60*..." should be 60 times the desired precision (i.e. 0.25 for quarter notes, 0.125 for eighth notes, etc.)
+#the value of nperseg is currently tailored for our examples, "72" should be the BPM and "60*..." should be 60 times the desired precision (i.e. 0.25 for quarter notes, 0.125 for eighth notes, etc.)
 
 
 
@@ -58,7 +58,6 @@ def find_nearest(value, arr):
 
 
 def get_peaks(stft, frequencies, instrument):
-    lowest_tone = 440 / 2**4  # Frequency of an A0
     peaks = list()
     length = find_nearest(3520, frequencies)
     tbr = timbre[instrument]
@@ -72,7 +71,7 @@ def get_peaks(stft, frequencies, instrument):
         threshold = np.zeros(len(dft))
         peaks.append(dict())
         
-        # Compute the overall mean
+        # ---- Compute the overall mean ----
         for i in dft:
             mean += i**2
         mean /= len(dft.nonzero()[0])
@@ -80,34 +79,12 @@ def get_peaks(stft, frequencies, instrument):
         if mean < Y_MAX/100:
             mean = Y_MAX
         
-        
         # ---- Skip if silence / not loud enough ----
         if dft.max() < mean:
             continue
         
-        
-        # ---- Compute mean per four octaves range ----
-        omean = 0
-        f = lowest_tone * (2**4)
-        l = 0
-        l_prev = 0
-        while f < frequencies[length]:
-            l_prev = l
-            while frequencies[l] < f:
-                omean += dft[l]**2
-                l += 1
-            omean /= (l-l_prev)
-            omean = sqrt(omean)
-            if omean > mean:
-                threshold[l_prev:l+1] = 1.5*omean
-            else:
-                threshold[l_prev:l+1] = 1.5*mean
-            f *= 2**4
-        threshold[l:] = 1.5*mean
-        threshold[:find_nearest(lowest_tone, frequencies)] = dft.max()+1
-        
-        # uncomment this if using CQT
-        #threshold = np.full(len(dft), mean)
+        # ---- Uncomment this if using CQT ----
+        threshold = np.full(len(dft), mean)
         
         # ---- Clean dft below threshold and isolate peaks ----
         for pos in range(length):
@@ -123,9 +100,9 @@ def get_peaks(stft, frequencies, instrument):
                     i += 1
                 dft[pos+1:i] = 0
                 
-        plt.figure()
-        plt.plot(dft, color='r') #frequencies[:length],
-        plt.ylim(0, Y_MAX)
+#        plt.figure()
+#        plt.plot(dft, color='r') #frequencies[:length],
+#        plt.ylim(0, Y_MAX)
 #        sleep(1)
            
             
@@ -155,8 +132,8 @@ def get_peaks(stft, frequencies, instrument):
                     if j < len(tbr)-1:
                         j += 1
         
-        plt.plot(dft,color='b') #frequencies[:length],
-        plt.ylim(0, Y_MAX)
+#        plt.plot(dft,color='b') #frequencies[:length],
+#        plt.ylim(0, Y_MAX)
         
     return peaks
 
@@ -246,3 +223,35 @@ def identify_chords(notes):
         chord_progression.append(most_likely_chord)
     
     return chord_progression
+
+
+
+
+
+
+
+
+
+
+
+
+        
+#        # ---- Compute mean per four octaves range ----
+#        omean = 0
+#        f = lowest_tone * (2**4)
+#        l = 0
+#        l_prev = 0
+#        while f < frequencies[length]:
+#            l_prev = l
+#            while frequencies[l] < f:
+#                omean += dft[l]**2
+#                l += 1
+#            omean /= (l-l_prev)
+#            omean = sqrt(omean)
+#            if omean > mean:
+#                threshold[l_prev:l+1] = 1.5*omean
+#            else:
+#                threshold[l_prev:l+1] = 1.5*mean
+#            f *= 2**4
+#        threshold[l:] = 1.5*mean
+#        threshold[:find_nearest(lowest_tone, frequencies)] = dft.max()+1
