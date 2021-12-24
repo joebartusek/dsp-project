@@ -189,3 +189,58 @@ def notes_readable(notes):
         notes_t = ''.join([names[n] for n in list(np.where(notes[t,]==1)[0])])
         if notes_t: print(notes_t)
     return
+
+
+
+def cyclic_perm(lst):
+    lst[:] = lst[1:] + [lst[0]]
+    return lst
+
+
+def identify_chords(notes):
+    note_names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+    chord_types = {
+            (7,):        '5',
+                        
+            (4,7):      '',
+            (3,7):      'min',
+            (2,7):      'sus2',
+            (5,7):      'sus4',
+            (3,6):      'dim',
+            
+            (3,7,10):   'm7',
+            (3,7,14):   'mmaj7',
+            (4,7,10):   '7',
+            (4,7,11):   'maj7',
+            (2,7,10):   '7sus2',
+            (4,7,10):   '7sus4',
+            (3,6,9):    'dim7'
+            }
+    chord_progression = list()
+    
+    for t in range(len(notes)):
+        if not any(notes[t]):
+            continue
+        
+        seq, intervals = list(), list()
+        seq = [n for n in range(12) if notes[t][n]]
+        intervals = [(n-seq[0])%12 for n in seq[1:]]
+        
+        most_likely_chord = str()
+        
+        for chord_intervals in chord_types.keys():
+                        
+            perm = 0
+            while not all(n in intervals for n in chord_intervals) and perm < len(seq):
+                cyclic_perm(seq)
+                intervals = [(n-seq[0])%12 for n in seq[1:]]
+                perm += 1
+            
+            if perm == len(seq):
+                continue
+            else:
+                most_likely_chord = note_names[seq[0]] + chord_types[chord_intervals]
+    
+        chord_progression.append(most_likely_chord)
+    
+    return chord_progression
