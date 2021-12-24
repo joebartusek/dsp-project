@@ -9,21 +9,21 @@ import math
 transform = 'STFT'
 
 #fpath = input('\nPlease enter path of file to process: ')
-fpath = "test_audio/piano_DAb.wav"
+fpath = "test_audio/piano_Dm.wav"
 
 if transform == 'STFT':
     audio = RAF.AudioSignal(filepath = fpath)
-    frequencies, times, signal_stft = NID.compute_stft(audio.signal, audio.rate)
-    peaks = NID.get_peaks(signal_stft, frequencies, 'piano')
-    notes = NID.freq_to_notes(peaks, frequencies)
-    NID.notes_readable(notes)
+    frequencies, times, transform = NID.compute_stft(audio.signal, audio.rate)
 
 elif transform == 'CQT':
-    audio = RAF.AudioSignal(filepath = fpath)
     frequencies = np.logspace(math.log(27.5,10), math.log(4186,10), 87)
     samples, sample_rate = librosa.load(fpath)
-    cqt = np.abs(librosa.cqt(samples, sr=sample_rate, 
+    transform = np.abs(librosa.cqt(samples, sr=sample_rate, 
                              fmin=librosa.note_to_hz('A0'), n_bins=87, bins_per_octave=12))
-    peaks = NID.get_peaks(cqt, frequencies, 'piano')
-    notes = NID.freq_to_notes(peaks, frequencies)
-    NID.notes_readable(notes)
+
+
+peaks = NID.get_peaks(transform, frequencies, 'piano')
+notes = NID.freq_to_notes(peaks, frequencies)
+NID.notes_readable(notes)
+chords = NID.identify_chords(notes)
+print(chords)
